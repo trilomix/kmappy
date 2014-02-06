@@ -10,3 +10,7 @@ The program was in C/C++
 The new source code is in python
 
 The solver allow multiple outputs
+
+Usage:
+
+  python blam.py
