@@ -14,3 +14,5 @@ The solver allow multiple outputs
 Usage:
 
   python blam.py
+
+![ScreenShot](screenshot/MainFrame.pgn)
