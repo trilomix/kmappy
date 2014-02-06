@@ -15,4 +15,4 @@ Usage:
 
   python blam.py
 
-![ScreenShot](screenshot/MainFrame.pgn)
+![ScreenShot](screenshot/MainFrame.png)
