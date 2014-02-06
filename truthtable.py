@@ -255,7 +255,8 @@ class TruthTable(grid.Grid):
                 ColLabel.append(self.GetColLabelValue(Col))
             self.DeleteCols(vars, self.GetNumberCols()-(vars+outs))
             for Col in range(self.GetNumberCols()-outs, (vars+outs) ):
-                self.SetColLabelValue(Col, ColLabel.pop(0))
+                if ColLabel:
+                    self.SetColLabelValue(Col, ColLabel.pop(0))
     	self.DrawGrid(OverWrite = False)
         
     def SetVars(self, vars):
