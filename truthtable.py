@@ -231,7 +231,11 @@ class TruthTable(grid.Grid):
 
     def SetCellValueEvent(self, row, col, value):
         self.SetCellValue(row, col,  value)
-        evt = wx.grid.GridEvent(self.GetId(), wx.grid.wxEVT_GRID_CELL_CHANGE, self, row, col)
+        try:
+            EVT_GRID_CELL_CHANGE = wx.grid.wxEVT_GRID_CELL_CHANGE
+        except:
+            EVT_GRID_CELL_CHANGE = wx.grid.wxEVT_GRID_CELL_CHANGED
+        evt = wx.grid.GridEvent(self.GetId(),EVT_GRID_CELL_CHANGE, self, row, col)
         self.GetEventHandler().ProcessEvent(evt)
 
     def SetOuts(self, outs):
