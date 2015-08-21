@@ -19,7 +19,8 @@ from ReduceBoolExpression import ReduceSol
 
 import traceback
 import multiprocessing as mp
-from multiprocessing import Process, Lock, Queue, Manager, Pool, cpu_count
+from multiprocessing import Process, Lock, Queue, Manager, Pool, cpu_count, Value
+from Queue import Empty
 import logging
 from thread import start_new_thread
 from threading import Thread
@@ -34,6 +35,8 @@ import blamframe
     Vars_Count, Outputs_Count, Truth_Table,
     Function_Button, Paste_Button,
     Solve_Button, Sol_Txt, Sol_Tree, Equ_Txt, Equ_Tree, Solution_Type] = [wx.NewId() for __init__ in range(23)]
+
+MAXOUTPUTS = 20
 
 class MyStatusBar(wx.StatusBar):
     """ Displays information about the current view. Also global stats/
@@ -54,14 +57,14 @@ class TaskKarnaughMap(KarnaughMap):
     def __init__(self, numberOfOutputs, out, NbWorkers):
         KarnaughMap.__init__(self, numberOfOutputs, int(NbWorkers))
         self.out = out
-    def __call__(self):
-        return self.Solve()
+    def __call__(self, completion):
+        return self.Solve(completion)
     def __str__(self):
         return '%s * %s' % (self.out, self.out)
 
 class Worker(Process):
 
-    def __init__(self, work_queue, result_queue):
+    def __init__(self, work_queue, result_queue, completion):
 
         # base class initialization
         Process.__init__(self)
@@ -70,32 +73,28 @@ class Worker(Process):
         self.work_queue = work_queue
         self.result_queue = result_queue
         self.kill_received = False
-        print('Worker init...')
+        self.completion = completion
+        self.Kmap = None
 
     def run(self):
-        print('Worker run...')
         while not self.kill_received:
 
             # get a task
             #job = self.work_queue.get_nowait()
             try:
-                if not self.work_queue.empty():
-                    Kmap = self.work_queue.get(True,0.1)
-                else  :
-                     break
-##            except Empty:
-##                break
+                self.Kmap = self.work_queue.get(True,0.1)
+            except Empty:
+                break
             except:
-                print("Error")
                 traceback.print_exc()
                 pass
             # the actual processing
-            print("Starting " + str(Kmap.out) + " ...")
+            print("Starting " + str(self.Kmap.out) + " ...")
 
-            Kmap()
+            self.Kmap(self.completion)
 
             # store the result
-            self.result_queue.put(Kmap)
+            self.result_queue.put(self.Kmap)
 
 
 class SolveTask(Thread):
@@ -141,32 +140,93 @@ class SolveTask(Thread):
 
         if self.parent.work_queue.qsize() < NbWorkers:
             NbWorkers = self.parent.work_queue.qsize()
-        print('Start Workers')
+
         self.parent.WorkerList = []
         for i in range(NbWorkers):
-            worker = Worker(self.parent.work_queue, self.parent.result_queue)
+            completion = Value('i', 0)
+            worker = Worker(self.parent.work_queue, self.parent.result_queue, completion)
+            self.parent.WorkerList.append((worker, completion))
             worker.start()
             #worker.run()
-            self.parent.WorkerList.append(worker)
-        print('Workers Run')
-##        while not self.work_queue.empty():
-##            NbWorkLeft = work_queue.qsize()
-##            self.UpdateLock.acquire()
-##            #wx.CallAfter(self.progress_bar.SetValue, (outs-NbWorkLeft)*100/outs)
-##            self.UpdateLock.release()
-##            sleep(0.1)
 
-##        for i in range(len(KmapList)):
-##            Kmap = result_queue.get()
-##            self.Updateparent(Kmap, Kmap.out)
+        # Wait for all job finish
+    	while self.parent.WorkerList:
+    	    for (worker, completion) in self.parent.WorkerList:
+    	        worker.join(10)
+    	        if not worker.is_alive():
+    	            self.parent.WorkerList.remove((worker,completion))
+    	        else:
+    	           print 'Solver->%s %s%% complete' % (worker.name, completion.value )
 
-        for worker in self.parent.WorkerList:
-                worker.join()
-                self.parent.WorkerList.remove(worker)
-        print('Workers Join')
+##        # remove all workers
+##        for worker in self.parent.WorkerList:
+##            worker.kill_received = True
+##            self.parent.WorkerList.remove(worker)
+
 
     def run(self):
         self.Solve()
+
+
+class UpdateThread(Thread):
+    def __init__ (self,parent, parser, start, end, MAX):
+        Thread.__init__(self)
+        self.daemon = False
+        self.parent = parent
+        self.completion = 0
+        self.parser = parser
+        self.startindex = int(start)
+        self.endindex = int(end)
+        self.MAX = MAX
+
+    def loop(self):
+        parser = self.parser
+        start = self.startindex
+        end = self.endindex
+        vars = len(parser.sweepVarNames)
+        outs = len(parser.variablesList) - vars
+        for row in range(start, end):
+            self.completion = int( 100*(row-start)/(end-start) )
+            rowbit=[]
+            conv = row
+            for index in range(0,vars):
+                rowbit.append(conv%2)
+                conv = conv /2
+            rowbit.reverse()
+            line = [line for line in parser.myArray  if self.parent.SameBitCode(rowbit, line)]
+            try:
+                line = line[0]
+            except IndexError:
+                raise Exception( 'Probably undefine value for row : %s' % rowbit )
+            #for col in range(0,vars):
+            #    self.truthTable.SetCellValueEvent(row, col,  str(int(colbit[col])))
+
+            col = vars
+            if self.MAX > 2:
+                # MAX = 2 can not be perform as it is the don't care state
+                value = line[-1]
+                if type(value) == str or type(value) == unicode :
+                    self.parent.truthTable.SetCellValueEvent(row, vars+outs,  value)
+                else:
+                    self.parent.truthTable.SetCellValueEvent(row, vars+outs,  str(int(value)))
+            else:
+                valueList = list(line[vars:])
+                valueList.reverse()
+                value = 0
+                if 2.0 in valueList or outs <2:
+                    # Don't care ...
+                    for value in line[vars:]:
+                        self.parent.truthTable.SetCellValueEvent(row, col,  str(int(value)))
+                        col += 1
+                else:
+                    for powerindex, valbit in enumerate(valueList):
+                        value += valbit*pow(2,powerindex)
+                    self.parent.truthTable.SetCellValueEvent(row, vars+outs,  str(int(value)))
+    def run(self):
+        try:
+            self.loop()
+        except:
+            traceback.print_exc()
 
 def walk_branches(tree,root):
     """ a generator that recursively yields child nodes of a wx.TreeCtrl """
@@ -290,7 +350,7 @@ class blamFrame(wx.Frame):
 
     	# ##### Notebook control initialization *****/
 
-    	self.methodBook =  wx.Notebook(mainRightPanel, -1)
+    	self.methodBook =  wx.Notebook(mainRightPanel, -1, style=wx.BK_DEFAULT|wx.NB_MULTILINE)
 
     	# ##### Sizers initialization *****/
 
@@ -347,11 +407,11 @@ class blamFrame(wx.Frame):
 
     	rightSizerTop.Add( wx.StaticText(mainPanel, -1, ("Number of variables: ")), 0, wx.CENTER | wx.RIGHT, 10)
     	self.numberOfVariables = wx.SpinCtrl(mainPanel, Vars_Count, ("4"), wx.DefaultPosition, wx.Size(50,-1))
-    	self.numberOfVariables.SetRange(1, 11)
+    	self.numberOfVariables.SetRange(1, 15)
     	rightSizerTop.Add(self.numberOfVariables, 0, wx.CENTER)
     	rightSizerTop.Add( wx.StaticText(mainPanel, -1, ("Number of outputs: ")), 0, wx.CENTER | wx.RIGHT, 10)
     	self.numberOfOutputs = wx.SpinCtrl(mainPanel, Outputs_Count, ("1"), wx.DefaultPosition, wx.Size(50,-1))
-    	self.numberOfOutputs.SetRange(1, 11)
+    	self.numberOfOutputs.SetRange(1, MAXOUTPUTS)
     	rightSizerTop.Add(self.numberOfOutputs, 0, wx.CENTER)
     	rightSizerTop.Add( wx.StaticText(mainPanel, -1, ("Type of solution: ")), 0, wx.CENTER | wx.LEFT | wx.RIGHT, 10)
     	solutionType =  wx.Choice(mainPanel, Solution_Type)
@@ -432,6 +492,7 @@ class blamFrame(wx.Frame):
         if len(argv) == 1 and type(argv[0]) == str and argv[0][0] in ['"', "'"]:
             argv[0] = eval(argv[0])
         if len(argv) == 1 and (os.path.isfile(argv[0]) or os.path.islink(argv[0] )):
+            print "Loading %s ..." % argv[0]
             self.LoadFile(argv[0])
             self.currentFileName = argv[0]
             config.Write('CurrentFileName', self.currentFileName)
@@ -523,6 +584,31 @@ class blamFrame(wx.Frame):
             self.truthTable.Write(file)
             self.currentFileName = file
             self.SetStatusText( os.path.basename(file),2 )
+
+    def OnSaveSol(self, event):
+        filters = 'kmapSolultion files (*.ksol)|*.ksol|All files (*.*)|*.*'
+        if self.currentFileName:
+            StartDirectory = os.path.dirname(self.currentFileName)
+        else:
+            StartDirectory = '.'
+        dialog = wx.FileDialog ( None, message = 'Save Solution to File',
+                  defaultDir=StartDirectory ,
+                  wildcard = filters, style = wx.SAVE )
+
+        if dialog.ShowModal() == wx.ID_OK:
+            selected = dialog.GetPath()
+            FileNameExt = dialog.GetFilename().split('.').pop()
+        else:
+            selected = []
+        dialog.Destroy()
+
+        if selected:
+            if FileNameExt != 'ksol':
+                file = selected + '.ksol'
+            else:
+                file = selected
+
+            self.WriteSol(file)
 
     def OnVarsChange( self, event ):
         for solution in self.solution:
@@ -617,7 +703,7 @@ class blamFrame(wx.Frame):
         for pagenb in range(0, self.methodBook.GetPageCount()):
             self.methodBook.SetPageText(outs-1-pagenb,("Karnaugh map %s") % parser.variablesList[vars+pagenb][0])
         # Update True Table Size
-        self.truthTable.SetVars(vars)
+        self.truthTable.SetVars(vars, UpdateGrid = False)
         self.truthTable.SetOuts(outs)
         for kmap in self.kmap:
             kmap.SetVars(vars)
@@ -629,33 +715,32 @@ class blamFrame(wx.Frame):
             col += 1
         # Update True Table data
         MAX = max([value[-1] for value in parser.myArray if type(value[-1]) == float])
-        for row in range(0,int(pow(2,vars))):
-            rowbit=[]
-            conv = row
-            for index in range(0,vars):
-                rowbit.append(conv%2)
-                conv = conv /2
-            rowbit.reverse()
-            line = [line for line in parser.myArray  if self.SameBitCode(rowbit, line)]
-            try:
-                line = line[0]
-            except IndexError:
-                raise Exception( 'Probably undefine value for row : %s' % rowbit )
-            #for col in range(0,vars):
-            #    self.truthTable.SetCellValueEvent(row, col,  str(int(colbit[col])))
 
-            col = vars
-            if MAX > 2:
-                # MAX = 2 can not be perform as it is the don't care state
-                value = line[-1]
-                if type(value) == str or type(value) == unicode :
-                    self.truthTable.SetCellValueEvent(row, vars+outs,  value)
-                else:
-                    self.truthTable.SetCellValueEvent(row, vars+outs,  str(int(value)))
-            else:
-                for value in line[vars:]:
-                    self.truthTable.SetCellValueEvent(row, col,  str(int(value)))
-                    col += 1
+    	ThreadList = []
+    	ref = vars-1
+    	paquet = pow(2,ref)
+    	ref = 0
+    	if ref<=1 :
+    	    thread = UpdateThread(self, parser, 0, int(pow(2,vars)), MAX )
+    	    thread.run()
+    	    #thread.start()
+    	    ThreadList.append( thread )
+    	else:
+    	    for paquet_index in range(0, int(pow(2, vars-ref))):
+    	           start = 0+paquet_index*pow(2, ref)
+    	           end = pow(2, ref)+paquet_index*pow(2, ref)
+    	           thread = UpdateThread(self, parser,start, end, MAX)
+    	           #thread.run()
+    	           thread.start()
+    	           ThreadList.append( thread )
+
+##    	while ThreadList:
+##    	    for thread in ThreadList:
+##    	        thread.join(10)
+##    	        if not thread.is_alive():
+##    	            ThreadList.remove(thread)
+##    	        else:
+##    	           print 'Main %s %s%% complete' % (thread.getName(), thread.completion )
 
     def SameBitCode(self, a, b):
         for abit,bbit in zip(a,b):
@@ -776,7 +861,7 @@ class blamFrame(wx.Frame):
         self.SolveLeft = self.numberOfOutputs.GetValue()
         self.solvethread = SolveTask(self)
         self.solvethread.start()
-        #self.solvethread.run()
+    	#self.solvethread.run()
 
     def OnIdle(self, event):
         try:
@@ -1014,8 +1099,8 @@ class blamFrame(wx.Frame):
                 self.Equations.AppendItem(TreeRoot, b, -1, -1, bData)
 
             #print [self.solutionStr(self.Equations.GetItemData(item).GetData()) for item in walk_branches(self.Equations,TreeRoot)]
-            self.Equations.Show()
             #self.Equations.Expand(TreeRoot)
+            self.Equations.Show()
             self.EquationsTxt.Show()
             self.Layout()
 
@@ -1023,7 +1108,6 @@ class blamFrame(wx.Frame):
         SolName = self.OutputName(out)
         s="%s = " % SolName
 
-        self.solution[out].DeleteAllItems()
         self.solution[out].AddRoot(s)
 
         TreeRoot = self.solution[out].GetRootItem()
@@ -1135,35 +1219,48 @@ class blamFrame(wx.Frame):
             self.solveSOP=0
             self.ClearInterface()
 
-    def OnSaveSol(self, event):
-        filters = 'kmapSolultion files (*.ksol)|*.ksol|All files (*.*)|*.*'
-        if self.currentFileName:
-            StartDirectory = os.path.dirname(self.currentFileName)
-        else:
-            StartDirectory = '.'
-        dialog = wx.FileDialog ( None, message = 'Save Solution to File',
-                  defaultDir=StartDirectory ,
-                  wildcard = filters, style = wx.SAVE )
-
-        if dialog.ShowModal() == wx.ID_OK:
-            selected = dialog.GetPath()
-            FileNameExt = dialog.GetFilename().split('.').pop()
-        else:
-            selected = []
-        dialog.Destroy()
-
-        if selected:
-            if FileNameExt != 'ksol':
-                file = selected + '.ksol'
-            else:
-                file = selected
-
-            self.WriteSol(file)
-
     def WriteSol( self, filePath):
         """
         Genere un fichier a partir du resultat
         """
+        def parseBusName(inNames):
+            outNames = []
+            for Name in inNames:
+                if Name in [elem[0] for elem in outNames]:
+                    print 'Duplicate Names %s' % (Name)
+                else:
+                    if Name.endswith('>'):
+                        BaseName = Name[:Name.find('<')]
+                        BusIndex = eval(Name[Name.find('<')+1:-1])
+                    else:
+                        BaseName = Name
+                        BusIndex = -1
+                    if BaseName in [elem[0] for elem in outNames]:
+                        for elem in outNames:
+                            if elem[0] == BaseName:
+                                if elem[1] < BusIndex:
+                                    elem[1] = BusIndex
+                                elif elem[2] > BusIndex:
+                                    elem[2] = BusIndex
+                                break
+                    else:
+                        outNames.append([BaseName,BusIndex,BusIndex])
+            return outNames
+
+
+        def AddInvEquXList(EquStr, InvEquXList):
+            #Search for EquX
+            Formula = EquStr.split()[1].split('=')[1]
+            # remove brackets
+            Formula = Formula.replace('(', '').replace(')', '')
+            if Formula.find('+') > -1:
+                FormulaList = Formula.split('+')
+            else:
+                FormulaList = Formula.split('.')
+            for Entrie in FormulaList:
+                if Entrie.startswith('Equ') and not(Entrie in InvEquXList):
+                    InvEquXList.append(Entrie)
+            return InvEquXList
 
         fh = open(filePath, "w")
 
@@ -1173,56 +1270,10 @@ class blamFrame(wx.Frame):
 
         AllSolutions = self.GetSolutions()
         outs = self.numberOfOutputs.GetValue()
-        OUTNAMES = []
-        INNAMES = []
-        InvEquXList = []
-        for outindex in range(0,outs):
-            Name = self.OutputName(outindex)
-            if Name in [Output[0] for Output in OUTNAMES]:
-                print 'Duplicate Names %s' % (Name)
-            else:
-                if Name.endswith('>'):
-                    BaseName = Name[:Name.find('<')]
-                    BusIndex = eval(Name[Name.find('<')+1:-1])
-                else:
-                    BaseName = Name
-                    BusIndex = -1
-                if BaseName in [Output[0] for Output in OUTNAMES]:
-                    for Output in OUTNAMES:
-                        if Output[0] == BaseName:
-                            if Output[1] < BusIndex:
-                                Output[1] = BusIndex
-                            elif Output[2] > BusIndex:
-                                Output[2] = BusIndex
-                            break
-                else:
-                    OUTNAMES.append([BaseName,BusIndex,BusIndex])
-
         vars = self.numberOfVariables.GetValue()
-        for inputindex in range(0,vars):
-            Name = self.ColName(inputindex)
-            if Name in [Input[0] for Input in INNAMES]:
-                print 'Duplicate Names %s' % (Name)
-            else:
-                if Name.endswith('>'):
-                    BaseName = Name[:Name.find('<')]
-                    BusIndex = eval(Name[Name.find('<')+1:-1])
-                else:
-                    BaseName = Name
-                    BusIndex = -1
-                if BaseName in [Input[0] for Input in INNAMES]:
-                    for Input in INNAMES:
-                        if Input[0] == BaseName:
-                            if Input[1] < BusIndex:
-                                Input[1] = BusIndex
-                            elif Input[2] > BusIndex:
-                                Input[2] = BusIndex
-                            break
-                    print Name
-                    print INNAMES
-                else:
-                    INNAMES.append([BaseName,BusIndex,BusIndex])
-
+        OUTNAMES = parseBusName([self.OutputName(outindex) for outindex in range(0,outs)])
+        INNAMES = parseBusName([self.ColName(inputindex) for inputindex in range(0,vars)])
+        InvEquXList = []
 
         for input in INNAMES:
             if input[1] != input[2]:
@@ -1297,15 +1348,8 @@ class blamFrame(wx.Frame):
                         else:
                             EquStr = 'None %s=%s' % (EquName,self.solutionStr(values, '+'))
 
-                #Search for EquX
-                Formula = EquStr.split()[1].split('=')[1]
-                if Formula.find('+') > -1:
-                    FormulaList = Formula.split('+')
-                else:
-                    FormulaList = Formula.split('.')
-                for Entrie in FormulaList:
-                    if Entrie.startswith('Equ') and not(Entrie in InvEquXList):
-                        InvEquXList.append(Entrie)
+
+                InvEquXList = AddInvEquXList(EquStr, InvEquXList)
 
                 fh.write('%s\n' % EquStr)
 
@@ -1345,14 +1389,7 @@ class blamFrame(wx.Frame):
                 fh.write(b+'\n')
 
                 #Search for EquX
-                Formula = b.split()[1].split('=')[1]
-                if Formula.find('+') > -1:
-                    FormulaList = Formula.split('+')
-                else:
-                    FormulaList = Formula.split('.')
-                for Entrie in FormulaList:
-                    if Entrie.startswith('Equ') and not(Entrie in InvEquXList):
-                        InvEquXList.append(Entrie)
+                InvEquXList = AddInvEquXList(b, InvEquXList)
 
             fh.write('\n')
 
@@ -1373,7 +1410,7 @@ class blamFrame(wx.Frame):
         fh.close()
 
     def OnQuit( self, event ):
-        for worker in self.WorkerList:
+        for (worker, completion) in self.WorkerList:
             worker.terminate()
 
         self.Close(True)
@@ -1423,7 +1460,7 @@ class blamFrame(wx.Frame):
 
     def OnAbout( self, event ):
         wx.MessageBox( ( "self is a program for minimizing boolean functions using Karnaugh maps method."
-	"\n\nCopyright (C) 2013. Bertrand PIGEARD""\n\nBase on code from Copyright (C) 2005. Robert Kovacevic"),
+	"\n\nCopyright (C) 2015. Bertrand PIGEARD""\n\nBase on code from Copyright (C) 2005. Robert Kovacevic"),
 ( "About Karnaugh Map Minimizer" ), wx.OK | wx.ICON_INFORMATION, self )
 
 class SolveTreeItemData(wx.TreeItemData):

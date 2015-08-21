@@ -1,10 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python 
 import wx
 from wx import Config
 
 import blam
 from blamframe import *
-
+from  multiprocessing import freeze_support
 class blamapp(wx.App):
     def OnInit(self):
 ##	wxConfig *config = new wxConfig(wxT("Karnaugh Map Minimizer"));
@@ -51,4 +51,5 @@ def main():
 if __name__ == '__main__':
 ##    import wx.lib.inspection
 ##    wx.lib.inspection.InspectionTool().Show()
-    main()
+	freeze_support()
+	main()

@@ -1,7 +1,8 @@
 import wx
 from wx import grid as gridlib
 #from wx import font
-from math import ceil, floor
+from math import ceil, floor, log
+from threading import Lock
 import random
 
 ##BEGIN_EVENT_TABLE( KMap, wx.Grid )
@@ -24,6 +25,8 @@ KMAP_MENU_SETRAND
 class KMap( gridlib.Grid):
     def __init__(self, parent, id=-1, vars=4, pos=wx.DefaultPosition, size=wx.DefaultSize, style=0, name=''):
         gridlib.Grid.__init__(self, parent, id, pos, size, style, name)
+        
+        self.Lock = Lock()
         self.width=pow(2, ceil(vars/2))
     	self.height=pow(2, floor(vars/2))
     	
@@ -62,6 +65,11 @@ class KMap( gridlib.Grid):
     	
     	self.ForceRefresh()
 
+    def SetCellValue(self, i, j, value):
+        self.Lock.acquire()
+        val = gridlib.Grid.SetCellValue(self, i, j, value)
+        self.Lock.release()
+        return val
     def AddSolution(self, sol):
 	    for i in range(0, self.height):
 	        for j in range(0,self.width):
@@ -291,13 +299,8 @@ class KMap( gridlib.Grid):
     			for j in range(0, self.width):
     			 
     				# Set every 4x4 block's first 4 vars to gray code
-    				if(i%2 ==0 ):
-    				 
-    				  self.kmapValues[(j, i)]=self.GrayEncode(j+((i)*self.width))
-    				  
-    				else:
-    				 
-    				  self.kmapValues[(j, i)]=self.GrayEncode((self.width-1-j)+((i)*self.width))
+    				self.SetMapValue( j,  i)
+    				
     	else:
     	 
     		if(self.numberOfVariables==2):
@@ -396,7 +399,7 @@ class KMap( gridlib.Grid):
     
     def GetMapValue(self, x,  y):
         if not self.kmapValues.has_key((x,y)):
-            self.kmapValues[(x,y)] = x+y*int(pow(2, ceil(self.numberOfVariables/2)))
+            self.SetMapValue( x,  y)
         return self.kmapValues[(x,y)]
      
     
@@ -413,14 +416,23 @@ class KMap( gridlib.Grid):
     		b.insert(0,0)
     	return b
      
+    def SetMapValue(self, x,  y):
+        if(y%2 ==0 ):
+            self.kmapValues[(x, y)]=self.GrayEncode(x+((y)*self.width))
+        else:
+            self.kmapValues[(x, y)]=self.GrayEncode((self.width-1-x)+((y)*self.width))
     
     def Set(self, adr, value):
+        MaskRowadr = (( 1<< int(log(self.GetNumberRows())/log(2)) ) -1) << int(log(self.GetNumberCols())/log(2))
+        Rowadr = adr & MaskRowadr
+        
         for i in range(0, self.height):
-    	    for j in range(0, self.width):
-    	        if(self.kmapValues[(j, i)]==adr):
-    	            
-    	            self.SetCellValue(i, j, value)
-    	            return
+            if self.kmapValues[(0, i)]==Rowadr:
+                break
+        for j in range(0, self.width):
+            if(self.kmapValues[(j, i)]==adr):
+                self.SetCellValue(i, j, value)
+                return
     			 
     		 
     	 

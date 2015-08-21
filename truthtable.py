@@ -1,6 +1,6 @@
 import wx
 from wx import grid
-
+from threading import Thread, Lock
 import random
 ##include <cstdlib>
 ##include <ctime>
@@ -25,9 +25,45 @@ MENU_SET0,
 MENU_SETDC, 
 MENU_SETRAND
 ] = [wx.NewId() for i in range(5)]
+
+class UpdateThread(Thread):
+    def __init__(self, parent, vars, outs, range_i):
+        Thread.__init__(self) 
+        self.parent = parent
+        self.outs = outs
+        self.vars = vars
+        self.range_i = range_i
+        self.index = 0
+    def completion(self):
+        return int(100.0*(self.index-min(self.range_i))/len(self.range_i))
+    def run(self):
+        for i in self.range_i:
+    	    self.index = i
+    	    if  self.outs >= 2:
+    	        self.parent.UpdateDCRow( i)
+
+    	    for j in range(0, self.vars):
+    	        self.parent.SetReadOnly(i, j, 1)
+    	        if(not(i%2)):
+    	            self.parent.SetCellBackgroundColour(i, j,  wx.Colour(245, 245, 245))
+    	        else:
+    	            self.parent.SetCellBackgroundColour(i, j,  wx.Colour(235, 235, 235))
+    	        if((i%(pow(2, self.vars-j)))<(pow(2, self.vars-j-1))):
+    	            self.parent.SetCellValue(i, j,  ("0"))
+    	        else :
+    			    self.parent.SetCellValue(i, j,  ("1"))
+            for j in range(0, self.outs):
+                if (j%2 ==0):
+                    self.parent.SetCellBackgroundColour(i, self.vars+j,  wx.Colour(215, 225, 255))
+                else:
+                    self.parent.SetCellBackgroundColour(i, self.vars+j,  wx.Colour(255, 255, 255))
+
 class TruthTable(grid.Grid):
     def __init__(self, parent,  id=wx.NewId(),  vars=4, outs=3,  pos=wx.DefaultPosition,  size=wx.DefaultSize,  style=0, name=""):
         grid.Grid.__init__(self, parent, id, pos, size, style, name)
+        
+        self.Lock = Lock()
+
     	self.showZeros=1
     
     	self.CreateGrid(pow(2, vars), vars+1)
@@ -63,7 +99,23 @@ class TruthTable(grid.Grid):
     	self.Bind(wx.EVT_MENU, self.OnMenuSetRand, id=MENU_SETRAND)
     	
     	self.SetDefaultCellAlignment( wx.ALIGN_CENTRE,  wx.ALIGN_CENTRE)
+    	
 
+    def SetCellValue(self, i, j, val):
+        self.Lock.acquire()
+        grid.Grid.SetCellValue(self, i, j, val)
+        self.Lock.release()
+    
+    def SetReadOnly(self, i, j, Bool):
+        self.Lock.acquire()
+        grid.Grid.SetReadOnly(self, i, j, Bool)
+        self.Lock.release()
+        
+    def SetCellBackgroundColour(self, i, j,  color):
+        self.Lock.acquire()
+        grid.Grid.SetCellBackgroundColour(self, i, j, color)
+        self.Lock.release()
+        
     def DisplayPopup( self, event):
         if(self.IsSelection() ): # && self.GetSelectedRows().Count()>1)  <--- library bug
             self.popup=event.GetPosition()
@@ -122,15 +174,15 @@ class TruthTable(grid.Grid):
     		  (self.GetCellValue(Row, Col)!= ("0")) ):
     		      self.SetCellValue(Row, Col,  ("?"))
             
-            if(self.GetCellValue(Row, Col)== ("")) & Row>self.numberOfVariables:
+            elif(self.GetCellValue(Row, Col)== ("")) & Col>self.numberOfVariables:
                 if(self.showZeros): 
                     self.SetCellValue(Row, Col,  ("0"))
             
-            if(self.GetCellValue(Row, Col)== ("0"))& Row>self.numberOfVariables:
+            elif(self.GetCellValue(Row, Col)== ("0"))& Col>self.numberOfVariables:
                 if(not self.showZeros): 
                     self.SetCellValue(Row, Col,  (""))
             
-            # Update DC column
+            # Update DC column for row
             self.UpdateDCRow( Row)
             
         if event:
@@ -227,6 +279,7 @@ class TruthTable(grid.Grid):
         for col in range( DC_Col-1, self.numberOfVariables-1, -1):
             if self.GetCellValue(Row, col) == '1':
                 current_dec_value += pow(2, (DC_Col-1) -col)
+        
         self.SetCellValue(Row, DC_Col,  str(current_dec_value))
 
     def SetCellValueEvent(self, row, col, value):
@@ -238,7 +291,7 @@ class TruthTable(grid.Grid):
         evt = wx.grid.GridEvent(self.GetId(),EVT_GRID_CELL_CHANGE, self, row, col)
         self.GetEventHandler().ProcessEvent(evt)
 
-    def SetOuts(self, outs):
+    def SetOuts(self, outs, UpdateGrid = True):
         self.numberOfOutputs = outs
         vars = self.numberOfVariables
         
@@ -261,9 +314,10 @@ class TruthTable(grid.Grid):
             for Col in range(self.GetNumberCols()-outs, (vars+outs) ):
                 if ColLabel:
                     self.SetColLabelValue(Col, ColLabel.pop(0))
-    	self.DrawGrid(OverWrite = False)
+    	if UpdateGrid:
+    	    self.DrawGrid(OverWrite = False)
         
-    def SetVars(self, vars):
+    def SetVars(self, vars, UpdateGrid = True):
         #self.ClearGrid()
         self.numberOfVariables=vars
         outs = self.numberOfOutputs
@@ -292,7 +346,8 @@ class TruthTable(grid.Grid):
         if(self.GetNumberRows()>(pow(2, vars))): 
             self.DeleteRows(pow(2, vars), self.GetNumberRows()-(pow(2, vars)))
 	
-    	self.DrawGrid(OverWrite = False)
+    	if UpdateGrid:
+    	    self.DrawGrid(OverWrite = False)
 
     def DrawGrid(self, OverWrite = True):
         vars = self.numberOfVariables
@@ -314,25 +369,50 @@ class TruthTable(grid.Grid):
         	    if(self.showZeros): 
         		    self.SetCellValue(i, self.numberOfVariables,  ("0"))
     	
-    	for i in range(0,(pow(2, vars)) ):
-    	    if  outs >= 2:
-    	        self.UpdateDCRow( i)
-
-    	    for j in range(0, vars):
-    	        self.SetReadOnly(i, j, 1)
-    	        if(not(i%2)):
-    	            self.SetCellBackgroundColour(i, j,  wx.Colour(245, 245, 245))
+    	ThreadList = []
+    	ref = vars-4
+    	paquet = pow(2,ref)
+    	if ref<=1 :
+    	    thread = UpdateThread(self, vars, outs, range(0,(pow(2, vars)) ))
+    	    thread.start()
+    	    ThreadList.append( thread )
+    	else:
+    	    for paquet_index in range(0, pow(2, vars-ref)):
+    	           start = 0+paquet_index*pow(2, ref)
+    	           end = pow(2, ref)+paquet_index*pow(2, ref)
+    	           thread = UpdateThread(self, vars, outs, range(start,end))
+    	           thread.start()
+    	           ThreadList.append( thread )
+    	           
+    	while ThreadList:
+    	    for thread in ThreadList:
+    	        thread.join(10)
+    	        if not thread.is_alive():
+    	            ThreadList.remove(thread)
     	        else:
-    	            self.SetCellBackgroundColour(i, j,  wx.Colour(235, 235, 235))
-    	        if((i%(pow(2, vars-j)))<(pow(2, vars-j-1))):
-    	            self.SetCellValue(i, j,  ("0"))
-    	        else :
-    			    self.SetCellValue(i, j,  ("1"))
-            for j in range(0, outs):
-                if (j%2 ==0):
-                    self.SetCellBackgroundColour(i, vars+j,  wx.Colour(215, 225, 255))
-                else:
-                    self.SetCellBackgroundColour(i, vars+j,  wx.Colour(255, 255, 255))
+    	           completion = 100
+    	           for threadi in ThreadList:
+    	               completion = min(threadi.completion(), completion)
+    	           print '%s %s%% complete' % (thread.getName(), completion )
+##    	for i in range(0,(pow(2, vars)) ):
+##    	    if  outs >= 2:
+##    	        self.UpdateDCRow( i)
+##
+##    	    for j in range(0, vars):
+##    	        self.SetReadOnly(i, j, 1)
+##    	        if(not(i%2)):
+##    	            self.SetCellBackgroundColour(i, j,  wx.Colour(245, 245, 245))
+##    	        else:
+##    	            self.SetCellBackgroundColour(i, j,  wx.Colour(235, 235, 235))
+##    	        if((i%(pow(2, vars-j)))<(pow(2, vars-j-1))):
+##    	            self.SetCellValue(i, j,  ("0"))
+##    	        else :
+##    			    self.SetCellValue(i, j,  ("1"))
+##            for j in range(0, outs):
+##                if (j%2 ==0):
+##                    self.SetCellBackgroundColour(i, vars+j,  wx.Colour(215, 225, 255))
+##                else:
+##                    self.SetCellBackgroundColour(i, vars+j,  wx.Colour(255, 255, 255))
     	
         dc = wx.ClientDC(self)
     	dc.SetFont(self.GetLabelFont())
@@ -354,9 +434,12 @@ class TruthTable(grid.Grid):
     	dc.SetFont(self.GetLabelFont())
     	[w,h] = dc.GetTextExtent( self.GetColLabelValue(col) )
     	
+    	if(w<20): 
+    		    w=20
     	#self.SetColLabelSize(w+15)
+    	self.SetColSize(col, w+15)
     	
-    	self.AutoSizeColumns(1)
+    	#self.AutoSizeColumns(1)
     	
     	self.ForceRefresh()
     	

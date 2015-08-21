@@ -1,6 +1,6 @@
 from math import *
 import traceback
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, Manager
 
 class KarnaughNode(object):
     def __init__(self):
@@ -14,57 +14,57 @@ class JoinNode(object):
         self.removeblocks = removeblocks
 
 class JoinTask(Process):
-    def __init__ (self,parent, blocks, a, i, resultQueue, process_counter):
+    def __init__ (self, parent, blocks, a, i):
         Process.__init__(self)
         self.daemon = False
         self.status = -1
         self.parent = parent
         self.blocks = blocks
-        self.newblocks = []
+        #self.newblocks = []
         self.a      = a
         self.i      = i
-        self.resultQueue = resultQueue
-        self.process_counter = process_counter
+        #self.resultQueue = resultQueue
+        #self.process_counter = process_counter
 
     def Join(self, blocks, a, i):
-        for b in blocks:
-            if(     (a.numberOfItems == pow(2.0, i-1)) &
-                    (b.numberOfItems == pow(2.0, i-1)) ):
-                x=self.parent.IsJoinable(a.values, b.values )
-                if(x>0):
-                    #/* If they can be joined make a new block with 2 in the place
-                    #of the one bit where they a and b are different */
-                    n = KarnaughNode()
-                    n.numberOfItems=a.numberOfItems*2
-                    n.flag = False
-                    for j in range(0, len(a.values) ):
+        CompBlocks = [block for block in blocks if self.parent.IsJoinable(a.values, block.values )]
+        for b in CompBlocks:
+##            if(     (a.numberOfItems == pow(2.0, i-1)) &
+##                    (b.numberOfItems == pow(2.0, i-1)) ):
+            x=self.parent.IsJoinable(a.values, b.values )
+            if(x>0):
+                #/* If they can be joined make a new block with 2 in the place
+                #of the one bit where they a and b are different */
+                n = KarnaughNode()
+                n.numberOfItems=a.numberOfItems*2
+                n.flag = False
+                for j in range(0, len(a.values) ):
+                    if(j!=(x-1)):
+                        n.values.append(a.values[j] )
+                    else:
+                        n.values.append( 2 )
 
-                        if(j!=(x-1)):
-                            n.values.append(a.values[j] )
-                        else:
-                            n.values.append( 2 )
+                #/* Mark that a node is part of a larger node */
+                a.flag=True
+                b.flag=True
 
-                    #/* Mark that a node is part of a larger node */
-                    a.flag=True
-                    b.flag=True
+                #/* Check if that block already exists in the list */
+                exist=False
+                for c in self.parent.blocks:
+                    if(n.values==c.values):
+                        exist=True
 
-                    #/* Check if that block already exists in the list */
-                    exist=False
-                    for c in self.parent.blocks:
-                        if(n.values==c.values):
-                            exist=True
-
-                    if(not exist):
-                        self.newblocks.append(n )
+                if(not exist):
+                    self.parent.blocks.append(n )
 
     def run(self):
 
         try:
             self.Join(self.blocks, self.a, self.i)
-            removeblocks = [block for block in self.blocks if (block.flag==True) ]
-            self.resultQueue.put(JoinNode(self.newblocks,removeblocks))
+##            removeblocks = [block for block in self.blocks if (block.flag==True) ]
+##            self.resultQueue.put(JoinNode(self.newblocks,removeblocks))
         except:
-            print "****************process_counter : %s****************" % self.process_counter
+##            print "****************process_counter : %s****************" % self.process_counter
             traceback.print_exc()
             pass
 
@@ -72,6 +72,7 @@ class KarnaughMap(object):
 
     def __init__(self, n, MaxProcess=16384):
 
+        #self.blocks = Manager().list()
         self.blocks = []
         self.kmap = {}
         self.kmapDCare = {}
@@ -79,6 +80,7 @@ class KarnaughMap(object):
 
         self.MaxProcess = MaxProcess
         print "MaxProcess %d" % MaxProcess
+        self.completion = 0
         # Set number of variables
         self.numberOfVariables=n
         self.numberOfDCares=0
@@ -122,10 +124,10 @@ class KarnaughMap(object):
         for i in range(0,self.height):
             for j in range(0,self.width):
                 self.Set(j, i, 0 )
-        self.blocks=[]
+        self.blocks=Manager().list()
 
 
-    def Solve(self):
+    def Solve(self, completion):
 
         """ Iterates through all possible ways that 'Don't cares' can be
         arranged, and finds one with fewest number of nodes in the solution
@@ -148,6 +150,7 @@ class KarnaughMap(object):
             for j in range(len(b), self.numberOfDCares):
                 b.insert(0, 0 )
 
+            #self.blocks= Manager().list()
             self.blocks= []
 
             c=0
@@ -167,15 +170,15 @@ class KarnaughMap(object):
 
 
 
-            self.Solve2( )
+            self.Solve2( completion )
 
             if( (bestc==-1) | (len(self.blocks)<=bestc) ):
 
                 sc=0
                 for iter in self.blocks:
 
-                    for i in range(0,len(iter.values) ):
-                        if(iter.values[i]==2):
+                    for k in range(0,len(iter.values) ):
+                        if(iter.values[k]==2):
                             sc += 1
 
 
@@ -199,40 +202,37 @@ class KarnaughMap(object):
         self.blocks=best
 
 
-    def Solve2(self):
+    def Solve2(self, completion):
 
-        def Join():
-            blocks.remove(a)
-            for b in blocks:
-                if(     (a.numberOfItems == pow(2.0, sizeloop-1)) &
-                        (b.numberOfItems == pow(2.0, sizeloop-1)) ):
-                    x=self.IsJoinable(a.values, b.values )
-                    if(x>0):
-                        #/* If they can be joined make a new block with 2 in the place
-                        #of the one bit where they a and b are different */
-                        n = KarnaughNode()
-                        n.numberOfItems=a.numberOfItems*2
-                        n.flag = False
-                        for j in range(0, len(a.values) ):
+        def Join(a,i):
+            CompBlocks = [block for block in blocks if self.IsJoinable(a.values, block.values )]
+            for b in CompBlocks:
+                x=self.IsJoinable(a.values, b.values )
+                if(x>0):
+                    #/* If they can be joined make a new block with 2 in the place
+                    #of the one bit where they a and b are different */
+                    n = KarnaughNode()
+                    n.numberOfItems=a.numberOfItems*2
+                    n.flag = False
+                    for j in range(0, len(a.values) ):
 
-                            if(j!=(x-1)):
-                                n.values.append(a.values[j] )
-                            else:
-                                n.values.append( 2 )
+                        if(j!=(x-1)):
+                            n.values.append(a.values[j] )
+                        else:
+                            n.values.append( 2 )
 
-                        #/* Mark that a node is part of a larger node */
-                        a.flag=True
-                        b.flag=True
+                    #/* Mark that a node is part of a larger node */
+                    a.flag=True
+                    b.flag=True
 
-                        #/* Check if that block already exists in the list */
-                        exist=False
-                        for c in self.blocks:
-                            if(n.values==c.values):
-                                exist=True
+                    #/* Check if that block already exists in the list */
+                    exist=False
+                    for c in self.blocks:
+                        if(n.values==c.values):
+                            exist=True
 
-                        if(not exist):
-                            self.blocks.append(n )
-
+                    if(not exist):
+                        self.blocks.append(n )
         def CleanProcess():
             for process in ProcessList:
                 process.join()
@@ -263,6 +263,7 @@ class KarnaughMap(object):
         if(a==1):
 
             #/* Clear the list so that all those nodes with one item are deleted */
+            #self.blocks=Manager().list()
             self.blocks=[]
 
             # If there are only zeros in the map there's nothing to solve
@@ -294,49 +295,56 @@ class KarnaughMap(object):
                     self.blocks.append(n )
 
 
-
+        max = int(log(self.width*self.height )/log(2)+1)
 
         # Joining blocks into blocks with 2^i elements
-        for sizeloop in range( 1, int(log(self.width*self.height )/log(2)+1) ):
+
+        for sizeloop in range( 1, max ):
             #/* Check every block with every other block and see if they can be joined
             #into a bigger block */
-            blocks = [block for block in self.blocks if (block.numberOfItems == pow(2.0, sizeloop-1)) ]
-            ##  resultQueue = Queue()
-            ##  ProcessList = []
-            #checked_blocks = []
-            for a in blocks:
-                #checked_blocks.append(a)
-                Join()
-##                processblocks = list(blocks)
-##                process = JoinTask(self, processblocks, a, i, resultQueue, len(ProcessList))
-##                ProcessList.append(process)
-##                process.run()
-##                process.start()
-##                if len(ProcessList) >= self.MaxProcess:
-##                    print "Solve2 len(ProcessList) %d" % len(ProcessList)
-##                    CleanProcess()
-##                    ProcessList = []
-##            CleanProcess()
 
-            # Flag block include in other block
-            a_blocks = [block for block in self.blocks if (block.flag==False and block.numberOfItems < pow(2.0, sizeloop)) ]
-            for a_block in a_blocks:
-                b_blocks = [block for block in self.blocks if (block!=a_block and block.numberOfItems > a_block.numberOfItems) ]
-                for b_block in b_blocks:
-                    flag_block = True
-                    for index in range(len(b_block.values)):
-                        if a_block.values[index] != b_block.values[index] and b_block.values[index] != 2:
-                            flag_block = False
-                            break
-                    if flag_block:
-                        self.blocks.remove(a_block)
-                        break
+            blocks = [block for block in self.blocks if (block.numberOfItems == pow(2.0, sizeloop-1)) ]
+##            resultQueue = Queue()
+            ProcessList = []
+            for index, a in enumerate(blocks):
+                self.completion = int((1.0*(index+1)/len(blocks)*1.0*1/max+(sizeloop-1.0)/max)*100)
+                completion.value = self.completion
+                Join(a,sizeloop)
+##                processblocks = list(blocks)
+##                process = JoinTask(self, processblocks , a, i)
+##                ProcessList.append(process)
+##                #process.run()
+##                process.start()
+##                while len(ProcessList) >= self.MaxProcess:
+##                    for process in ProcessList:
+##                        process.join(1)
+##                        if not process.is_alive():
+##                            ProcessList.remove(process)
+##            while ProcessList:
+##                for process in ProcessList:
+##                    process.join(10)
+##                    if not process.is_alive():
+##                        ProcessList.remove(process)
+##                    else:
+##                        print 'wait for process ...' % process.name
+              # Flag block include in other block
+              a_blocks = [block for block in self.blocks if (block.flag==False and block.numberOfItems < pow(2.0, sizeloop)) ]
+              for a_block in a_blocks:
+                  b_blocks = [block for block in self.blocks if (block!=a_block and block.numberOfItems > a_block.numberOfItems) ]
+                  for b_block in b_blocks:
+                      flag_block = True
+                      for index in range(len(b_block.values)):
+                          if a_block.values[index] != b_block.values[index] and b_block.values[index] != 2:
+                              flag_block = False
+                              break
+                      if flag_block:
+                          self.blocks.remove(a_block)
+                          break
 
             #/* Deletes nodes that are cointained in larger nodes */
             blocks = [block for block in self.blocks if (block.flag==True) ]
             for a in blocks:
                 self.blocks.remove(a)
-
 
         # Delete nodes that are Don't care only ones
         blocks = self.blocks
@@ -465,3 +473,4 @@ class KarnaughMap(object):
     def GetNumberOfVars(slef):
 
         return self.numberOfVariables
+

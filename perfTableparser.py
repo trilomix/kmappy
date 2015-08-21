@@ -282,7 +282,13 @@ class perfTableParser:
             lArray = []
             for i in range(lSize):
                 tmp = tokens.pop(0)
-                if tmp != 'X' and tmp != 'x' and tmp != '?':
+                if tmp == '?':
+                    # conversion des ? en 2
+                    myFloat = float('2')
+                    lArray.append(myFloat)
+                    myNumber = lType(*lArray)
+                    myList.append(myNumber)
+                elif tmp != 'X' and tmp != 'x':
                     # This will throw an error if data is not a float
                     myFloat = float(tmp)
                     lArray.append(myFloat)
