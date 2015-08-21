@@ -328,18 +328,18 @@ class KarnaughMap(object):
 ##                    else:
 ##                        print 'wait for process ...' % process.name
               # Flag block include in other block
-              a_blocks = [block for block in self.blocks if (block.flag==False and block.numberOfItems < pow(2.0, sizeloop)) ]
-              for a_block in a_blocks:
-                  b_blocks = [block for block in self.blocks if (block!=a_block and block.numberOfItems > a_block.numberOfItems) ]
-                  for b_block in b_blocks:
-                      flag_block = True
-                      for index in range(len(b_block.values)):
-                          if a_block.values[index] != b_block.values[index] and b_block.values[index] != 2:
-                              flag_block = False
-                              break
-                      if flag_block:
-                          self.blocks.remove(a_block)
-                          break
+                a_blocks = [block for block in self.blocks if (block.flag==False and block.numberOfItems < pow(2.0, sizeloop)) ]
+                for a_block in a_blocks:
+                    b_blocks = [block for block in self.blocks if (block!=a_block and block.numberOfItems > a_block.numberOfItems) ]
+                    for b_block in b_blocks:
+                        flag_block = True
+                        for index in range(len(b_block.values)):
+                            if a_block.values[index] != b_block.values[index] and b_block.values[index] != 2:
+                                flag_block = False
+                                break
+                        if flag_block:
+                            self.blocks.remove(a_block)
+                            break
 
             #/* Deletes nodes that are cointained in larger nodes */
             blocks = [block for block in self.blocks if (block.flag==True) ]
@@ -473,4 +473,3 @@ class KarnaughMap(object):
     def GetNumberOfVars(slef):
 
         return self.numberOfVariables
-
