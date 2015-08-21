@@ -876,7 +876,12 @@ class blamFrame(wx.Frame):
                     outs = self.numberOfOutputs.GetValue()
                     if self.solvethread.is_alive():
                         NbWorkLeft = self.SolveLeft
-                        wx.CallAfter(self.progress_bar.SetValue, (outs-NbWorkLeft)*100/outs)
+                        # Current job progress
+                        JobCompletion = 0
+                        for (worker,completion) in self.WorkerList:
+                            if worker.is_alive():
+                                JobCompletion += 1.0*completion.value/100
+                        wx.CallAfter(self.progress_bar.SetValue, (outs-(NbWorkLeft-JobCompletion))*100/outs)
 ##                    else:
 ##                    	if self.SolveLeft == 0:
 ##                    	    self.SetStatusText( ( "Karnaugh map solved!" ) )
