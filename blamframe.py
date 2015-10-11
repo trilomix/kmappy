@@ -719,7 +719,8 @@ class blamFrame(wx.Frame):
     	ThreadList = []
     	ref = vars-1
     	paquet = pow(2,ref)
-    	ref = 0
+    	# TODO: PB with threading this so set ref = 0
+        ref = 0
     	if ref<=1 :
     	    thread = UpdateThread(self, parser, 0, int(pow(2,vars)), MAX )
     	    thread.run()
@@ -868,7 +869,7 @@ class blamFrame(wx.Frame):
             time()-self.LastTime
         except:
             self.LastTime = time()
-        TimeInterval = 5
+        TimeInterval = 1
         try:
             if time()-self.LastTime > TimeInterval:
                 self.LastTime = time()

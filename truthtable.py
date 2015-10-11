@@ -21,14 +21,14 @@ import random
 [
 MENU_SETDEC,
 MENU_SET1,
-MENU_SET0, 
-MENU_SETDC, 
+MENU_SET0,
+MENU_SETDC,
 MENU_SETRAND
 ] = [wx.NewId() for i in range(5)]
 
 class UpdateThread(Thread):
     def __init__(self, parent, vars, outs, range_i):
-        Thread.__init__(self) 
+        Thread.__init__(self)
         self.parent = parent
         self.outs = outs
         self.vars = vars
@@ -61,61 +61,61 @@ class UpdateThread(Thread):
 class TruthTable(grid.Grid):
     def __init__(self, parent,  id=wx.NewId(),  vars=4, outs=3,  pos=wx.DefaultPosition,  size=wx.DefaultSize,  style=0, name=""):
         grid.Grid.__init__(self, parent, id, pos, size, style, name)
-        
+
         self.Lock = Lock()
 
     	self.showZeros=1
-    
+
     	self.CreateGrid(pow(2, vars), vars+1)
-    	
+
     	self.numberOfVariables=vars
     	self.SetOuts(outs)
-    	
+
     	self.SetVars(vars)
-    	
+
     	self.SetSelectionMode(grid.Grid.wxGridSelectRows)
-    	
+
     	self.EnableDragGridSize(0)
-    	
+
     	self.Bind(grid.EVT_GRID_CELL_CHANGE, self.OnCellChange)
-    	
+
     	self.Bind(grid.EVT_GRID_CELL_RIGHT_CLICK, self.DisplayPopup )
-    	
+
     	self.Bind(grid.EVT_GRID_LABEL_LEFT_CLICK, self.OnLabelColClick)
-    	
+
     	self.stateMenu =   wx.Menu()
-    	
+
     	self.stateMenu.Append(MENU_SETDEC, ("Set Decimale value"))
     	self.stateMenu.Append(MENU_SET1, ("Set to 1"))
     	self.stateMenu.Append(MENU_SET0, ("Set to 0"))
     	self.stateMenu.Append(MENU_SETDC, ("Set to \"don't care\""))
     	self.stateMenu.AppendSeparator()
     	self.stateMenu.Append(MENU_SETRAND, ("Set randomly"))
-    	
+
     	self.Bind(wx.EVT_MENU, self.OnMenuSetValue,   id=MENU_SETDEC)
     	self.Bind(wx.EVT_MENU, self.OnMenuSet1,    id=MENU_SET1)
     	self.Bind(wx.EVT_MENU, self.OnMenuSet0,    id=MENU_SET0)
     	self.Bind(wx.EVT_MENU, self.OnMenuSetDC,   id=MENU_SETDC)
     	self.Bind(wx.EVT_MENU, self.OnMenuSetRand, id=MENU_SETRAND)
-    	
+
     	self.SetDefaultCellAlignment( wx.ALIGN_CENTRE,  wx.ALIGN_CENTRE)
-    	
+
 
     def SetCellValue(self, i, j, val):
         self.Lock.acquire()
         grid.Grid.SetCellValue(self, i, j, val)
         self.Lock.release()
-    
+
     def SetReadOnly(self, i, j, Bool):
         self.Lock.acquire()
         grid.Grid.SetReadOnly(self, i, j, Bool)
         self.Lock.release()
-        
+
     def SetCellBackgroundColour(self, i, j,  color):
         self.Lock.acquire()
         grid.Grid.SetCellBackgroundColour(self, i, j, color)
         self.Lock.release()
-        
+
     def DisplayPopup( self, event):
         if(self.IsSelection() ): # && self.GetSelectedRows().Count()>1)  <--- library bug
             self.popup=event.GetPosition()
@@ -126,7 +126,7 @@ class TruthTable(grid.Grid):
             self.SetGridCursor(menuRow, menuCol)
             self.ClearSelection()
             self.SelectRow(menuRow)
-            
+
             self.popup=event.GetPosition()
             self.PopupMenu(self.stateMenu, event.GetPosition())
 
@@ -151,7 +151,7 @@ class TruthTable(grid.Grid):
                 except:
                     self.SetCellValue(Row, Col,  str(current_dec_value))
                     val = current_dec_value
-            
+
                 # Test limit values
                 if val < pow(2, self.numberOfOutputs) and val >=0:
                     # Do we need change
@@ -173,18 +173,18 @@ class TruthTable(grid.Grid):
               (self.GetCellValue(Row, Col)!= ("")) &
     		  (self.GetCellValue(Row, Col)!= ("0")) ):
     		      self.SetCellValue(Row, Col,  ("?"))
-            
+
             elif(self.GetCellValue(Row, Col)== ("")) & Col>self.numberOfVariables:
-                if(self.showZeros): 
+                if(self.showZeros):
                     self.SetCellValue(Row, Col,  ("0"))
-            
+
             elif(self.GetCellValue(Row, Col)== ("0"))& Col>self.numberOfVariables:
-                if(not self.showZeros): 
+                if(not self.showZeros):
                     self.SetCellValue(Row, Col,  (""))
-            
+
             # Update DC column for row
             self.UpdateDCRow( Row)
-            
+
         if event:
             event.Skip(1)
 
@@ -195,14 +195,14 @@ class TruthTable(grid.Grid):
             dlg = wx.TextEntryDialog(
                     self, 'Set Decimale Value',
                     '', '')
-    
+
             #dlg.SetValue(ColLabel)
-    
+
             if dlg.ShowModal() == wx.ID_OK:
                 for i in range(0,(pow(2, self.numberOfVariables)) ):
                     if(self.IsInSelection(i, 0)) :
                         self.SetCellValueEvent(i, self.GetNumberCols()-1,  str(dlg.GetValue()))
-    
+
             dlg.Destroy()
     def OnMenuSet1( self, event):
         for i in range(0,(pow(2, self.numberOfVariables)) ):
@@ -244,9 +244,9 @@ class TruthTable(grid.Grid):
                         #evt = wx.grid.GridEvent(self.GetId(), wx.grid.wxEVT_GRID_CELL_CHANGE, self, i, self.numberOfVariables+j)
                         #self.GetEventHandler().ProcessEvent(evt)
                     else:
-                        if(self.showZeros): 
+                        if(self.showZeros):
                             self.SetCellValueEvent(i, self.numberOfVariables+j, '0')
-                        else: 
+                        else:
                             self.SetCellValueEvent(i, self.numberOfVariables+j, '')
                         #evt = wx.grid.GridEvent(self.GetId(), wx.grid.wxEVT_GRID_CELL_CHANGE, self, i, self.numberOfVariables+j)
                         #self.GetEventHandler().ProcessEvent(evt)
@@ -260,26 +260,28 @@ class TruthTable(grid.Grid):
             dlg = wx.TextEntryDialog(
                     self, 'Change column name',
                     '', '')
-    
+
             dlg.SetValue(ColLabel)
-    
+
             if dlg.ShowModal() == wx.ID_OK:
                 self.SetColLabelValue(Col, dlg.GetValue())
                 self.SetColLabelSizefromLabel(Col)
                 #evt = wx.grid.GridEvent(self.GetId(), wx.grid.wxEVT_GRID_LABEL_RIGHT_CLICK, self, Row, Col)
                 #self.GetEventHandler().ProcessEvent(evt)
-    
+
             dlg.Destroy()
         event.Skip(1)
 
-    def UpdateDCRow(self, Row):        
+    def UpdateDCRow(self, Row):
         # Update DC column
         DC_Col = self.numberOfVariables+self.numberOfOutputs
+        if(self.GetNumberCols()<=DC_Col):
+            return
         current_dec_value = 0
         for col in range( DC_Col-1, self.numberOfVariables-1, -1):
             if self.GetCellValue(Row, col) == '1':
                 current_dec_value += pow(2, (DC_Col-1) -col)
-        
+
         self.SetCellValue(Row, DC_Col,  str(current_dec_value))
 
     def SetCellValueEvent(self, row, col, value):
@@ -294,8 +296,8 @@ class TruthTable(grid.Grid):
     def SetOuts(self, outs, UpdateGrid = True):
         self.numberOfOutputs = outs
         vars = self.numberOfVariables
-        
-        if(self.GetNumberCols()<(vars+outs+1)): 
+
+        if(self.GetNumberCols()<(vars+outs+1)):
             if outs >= 2:
                 # Delete DEC col
                 self.DeleteCols(self.GetNumberCols()-1, 1)
@@ -303,7 +305,7 @@ class TruthTable(grid.Grid):
             self.InsertCols(vars,InserNbCol)
             for i in range(0, InserNbCol):
                 self.SetColLabelValue(vars+i,  'f%d' % (outs-1-i))
-        if(self.GetNumberCols()>(vars+outs)): 
+        if(self.GetNumberCols()>(vars+outs)):
             if outs >= 1:
                 # Delete DEC col
                 self.DeleteCols(self.GetNumberCols()-1, 1)
@@ -316,7 +318,7 @@ class TruthTable(grid.Grid):
                     self.SetColLabelValue(Col, ColLabel.pop(0))
     	if UpdateGrid:
     	    self.DrawGrid(OverWrite = False)
-        
+
     def SetVars(self, vars, UpdateGrid = True):
         #self.ClearGrid()
         self.numberOfVariables=vars
@@ -326,7 +328,7 @@ class TruthTable(grid.Grid):
         ColLabel = []
         for Col in range(0, self.GetNumberCols() ):
             ColLabel.append(self.GetColLabelValue(Col))
-        if(self.GetNumberCols()<(vars+outs)): 
+        if(self.GetNumberCols()<(vars+outs)):
             InserNbCol = vars+outs-self.GetNumberCols()
             self.InsertCols(0,InserNbCol)
 ##            for i in range(0, InserNbCol):
@@ -334,41 +336,41 @@ class TruthTable(grid.Grid):
 ##            for Col in range(InserNbCol, vars+outs+1):
 ##                self.SetColLabelValue(Col, ColLabel[Col-InserNbCol] )
             #self.AppendCols(vars+outs-self.GetNumberCols())
-            
-        if(self.GetNumberCols()>(vars+outs)): 
-            NbDeleteCol = self.GetNumberCols()-(vars+outs) 
+
+        if(self.GetNumberCols()>(vars+outs)):
+            NbDeleteCol = self.GetNumberCols()-(vars+outs)
             self.DeleteCols(0, NbDeleteCol)
             for Col in range(0, vars+outs):
                 self.SetColLabelValue(Col, ColLabel[Col+NbDeleteCol] )
-        
+
         if(self.GetNumberRows()<(pow(2, vars))):
             self.AppendRows((pow(2, vars))-self.GetNumberRows())
-        if(self.GetNumberRows()>(pow(2, vars))): 
+        if(self.GetNumberRows()>(pow(2, vars))):
             self.DeleteRows(pow(2, vars), self.GetNumberRows()-(pow(2, vars)))
-	
+
     	if UpdateGrid:
     	    self.DrawGrid(OverWrite = False)
 
     def DrawGrid(self, OverWrite = True):
         vars = self.numberOfVariables
         outs = self.numberOfOutputs
-        
+
     	if  outs >= 2:
     	    self.AppendCols(1)
     	    self.SetColLabelValue(self.GetNumberCols()-1, 'DEC')
-    	
+
     	if OverWrite:
         	for i in range(0, vars):
         	    self.SetColLabelValue(i,  chr(65+i))
-        	
+
         	for i in range(0, outs):
         	    self.SetColLabelValue(vars+i,  'f%d' % (outs-1-i))
-        	
+
         	for i in range(0,(pow(2, vars)) ):
         	    self.SetRowLabelValue(i,  str(i))
-        	    if(self.showZeros): 
+        	    if(self.showZeros):
         		    self.SetCellValue(i, self.numberOfVariables,  ("0"))
-    	
+
     	ThreadList = []
     	ref = vars-4
     	paquet = pow(2,ref)
@@ -383,7 +385,7 @@ class TruthTable(grid.Grid):
     	           thread = UpdateThread(self, vars, outs, range(start,end))
     	           thread.start()
     	           ThreadList.append( thread )
-    	           
+
     	while ThreadList:
     	    for thread in ThreadList:
     	        thread.join(10)
@@ -413,19 +415,19 @@ class TruthTable(grid.Grid):
 ##                    self.SetCellBackgroundColour(i, vars+j,  wx.Colour(215, 225, 255))
 ##                else:
 ##                    self.SetCellBackgroundColour(i, vars+j,  wx.Colour(255, 255, 255))
-    	
+
         dc = wx.ClientDC(self)
     	dc.SetFont(self.GetLabelFont())
     	[w,h] = dc.GetTextExtent(  str( pow(2, vars) ))
-    	
+
     	self.SetRowLabelSize(w+15)
-    	
+
     	self.AutoSizeColumns(1)
     	for i in range(0, outs):
     	    self.SetColSize(vars+i, (1.5*self.GetColSize(0)))
-    	
+
     	self.ForceRefresh()
-    	
+
     	self.AdjustScrollbars()
 
     def SetColLabelSizefromLabel(self, col):
@@ -433,18 +435,18 @@ class TruthTable(grid.Grid):
     	dc = wx.ClientDC(self)
     	dc.SetFont(self.GetLabelFont())
     	[w,h] = dc.GetTextExtent( self.GetColLabelValue(col) )
-    	
-    	if(w<20): 
+
+    	if(w<20):
     		    w=20
     	#self.SetColLabelSize(w+15)
     	self.SetColSize(col, w+15)
-    	
+
     	#self.AutoSizeColumns(1)
-    	
+
     	self.ForceRefresh()
-    	
+
     	self.AdjustScrollbars()
-        
+
     def SetShowZeros(self, s):
     	self.showZeros=s;
     	for j in range(0, self.numberOfOutputs):
@@ -460,15 +462,15 @@ class TruthTable(grid.Grid):
         return self.showZeros
     def Write(self, filePath):
         """
-        Genere un fichier a partir d'une table 
+        Genere un fichier a partir d'une table
         """
-        
+
         fh = open(filePath, "w")
-        
+
         fh.write("%Generated by Kmapreducer\n\n")
         # @TODO Rajouter la date et l'heure
         fh.write("\n")
-        
+
         #sweep variables
         fh.write("% sweep_variables " )
         vars = self.numberOfVariables
@@ -476,25 +478,25 @@ class TruthTable(grid.Grid):
             varName = self.GetColLabelValue(var)
             fh.write( varName+" ")
         fh.write("\n\n" )
-        
-        
-        #performances 
+
+
+        #performances
         fh.write("% Performance_expressions_table:\n")
         outs = self.numberOfOutputs
         for out in range(0, outs):
             outName = self.GetColLabelValue(vars + out)
             fh.write("%performance "+outName+"= \"not defined\" type = int\n")
         fh.write("\n")
-        
-        
+
+
         # Ligne des variables
         fh.write("% ")
         for col in range(0, vars + outs) :
             name = self.GetColLabelValue(col)
             fh.write(name+" ")
         fh.write("\n")
-        
-        
+
+
         # Datas
         for row in range(0, self.GetNumberRows()) :
             for col in range(0, vars + outs):
@@ -520,7 +522,7 @@ class BoaApp(wx.App):
         self.SetTopWindow(self.main)
         self.main.Show(True)
         return True
-        
+
 
     def OnOpenWidgetInspector(self):
         # Activate the widget inspection tool
@@ -528,7 +530,7 @@ class BoaApp(wx.App):
             #from wx.lib.inspection import InspectionTool
             #if not InspectionTool().initialized:
             #    InspectionTool().Init()
-                
+
             # Find a widget to be selected in the tree.  Use either the
             # one under the cursor, if any, or this frame.
             #wnd = wx.FindWindowAtPointer()
@@ -542,13 +544,13 @@ def main():
     if __debug__:
         BoaApp.OnOpenWidgetInspector(application)
     #from wx.lib.mixins.inspection import InspectableApp
-    #app = InspectableApp(False)    
+    #app = InspectableApp(False)
     #frame = TestFrame(None)
     #frame.Show(True)
     #import wx.lib.inspection
     #wx.lib.inspection.InspectionTool().Show()
     application.MainLoop()
-    
+
 
 if __name__ == '__main__':
 ##    import wx.lib.inspection

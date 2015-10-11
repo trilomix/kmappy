@@ -124,7 +124,7 @@ class KarnaughMap(object):
         for i in range(0,self.height):
             for j in range(0,self.width):
                 self.Set(j, i, 0 )
-        self.blocks=Manager().list()
+    	self.blocks=Manager().list()
 
 
     def Solve(self, completion):
